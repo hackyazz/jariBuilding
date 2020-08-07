@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>threejs 场景加载测试</title>
+    <style>
+        body{margin: 0;}
+        canvas{display: block;}
+    </style>
+</head>
+<script src="../build/three.js"></script>
+<script src="../jsm/controls/OrbitControls.js" type="module"></script>
+<script src="../jsm/libs/stats.module.js" type="module"></script>
+<script src="../js/Tween.js"></script>
+
+<body>
+<button type="button" style="position: absolute;padding: 10px;margin-top: 50px;" id="spread">楼层展开</button>
+<button type="button" style="position: absolute;padding: 10px;margin-top: 100px;" id="merge">楼层合并</button>
+<!--<button type="button" style="position: absolute;padding: 10px;margin-top: 150px;" id="fps">第一人称视角漫游</button>-->
+<script type="module">
+    import * as THREE from '../build/three.module.js'
+    import {OrbitControls} from "../jsm/controls/OrbitControls.js";
+    import Stats from '../jsm/libs/Stats.module.js';
+
+    import {FBXLoader} from "../jsm/loaders/FBXLoader.js";
+
+
+    let scene,camera,renderer;
+    let controls;//相机控制对象
+
+
+
+    let Floor=new THREE.Group();
+    let floorPos=[];
+
+
+    let stats=initStats();
+    //声明并定义一条射线
+    let raycaster=new THREE.Raycaster();
+    let mouse=new THREE.Vector2();
+    //初始化场景
+    function initScene(){
+        scene=new THREE.Scene();
+        // 天空盒
+        let genCubeUrls = function (prefix, postfix) {
+            return [
+                prefix + 'px' + postfix, prefix + 'nx' + postfix,
+                prefix + 'py' + postfix, prefix + 'ny' + postfix,
+                prefix + 'pz' + postfix, prefix + 'nz' + postfix
+            ];
+
+        };
+        let urls = genCubeUrls('../img/skybox/', '.jpg');
+        new THREE.CubeTextureLoader().load(urls, function (cubeTexture) {
+            cubeTexture.encoding = THREE.sRGBEncoding;
+            scene.background = cubeTexture;
+        });
+        //设置scene背景
+        scene.background=new THREE.Color(0xa0a0a0);
+    }
+    //初始化相机
+    function initCamera() {
+        //定义camera
+        //构造方法为：Perspective（fov,aspect,near,far）
+        camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,1,10000);
+        camera.position.set(100,350,600);
+    }
+    //初始化灯光
+    function initLight() {
+        //创建半球光
+        let light=new THREE.HemisphereLight(0xffffff,0x555555);
+        light.position.set(0,200,0);
+        scene.add(light);
+
+        //创建直射光
+        light=new THREE.DirectionalLight(0xffffff);
+        light.position.set(0,200,100);
+        light.castShadow=true;
+        light.shadow.camera.top=180;
+        light.shadow.camera.bottom=-100;
+        light.shadow.camera.left=-120;
+        light.shadow.camera.right=120;
+        //scene.add(light);
+    }
+    //初始化地面
+    function initGround() {
+        //创建地面
+        let planeGeo=new THREE.PlaneBufferGeometry(2000,2000);
+        let planeMat=new THREE.MeshPhongMaterial({
+            color:0x000000,
+            depthWrite:true
+        });
+        let mesh=new THREE.Mesh(planeGeo,planeMat);
+        mesh.rotation.x=-Math.PI/2;
+        mesh.receiveShadow=true;
+        //scene.add(mesh);
+        //创建地面网格
+        let grid=new THREE.GridHelper(2000,20,0xffffff,0xffffff);
+        grid.name='地板';
+        grid.material.opacity=0.2;
+        grid.material.transparent=true;
+        scene.add(grid);
+    }
+    //初始化渲染器
+    function initRenderer() {
+        //定义renderer，声明抗锯齿效果，但是对于大型场景还是尽量不要设置，性能要求较大
+        renderer=new THREE.WebGLRenderer({antialias:true});
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth,window.innerHeight);
+        renderer.setClearColor(0xffffff);
+        renderer.shadowMap.enabled=true;
+        document.body.appendChild(renderer.domElement);
+    }
+    // 初始化轨迹球控件
+    function initControls() {
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.5;
+        // 视角最小距离
+        // controls.minDistance = 100;
+        // 视角最远距离
+        // controls.maxDistance = 1000;
+        // 最大角度
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.target = new THREE.Vector3(50,50,0);
+
+    }
+    // 初始化性能插件
+    function initStats() {
+        let stats = new Stats();
+
+        stats.domElement.style.position = 'absolute';
+        stats.domElement.style.left = '0px';
+        stats.domElement.style.top = '0px';
+
+        document.body.appendChild(stats.domElement);
+        return stats;
+    }
+    //初始化模型场景
+    function initContent(){
+        new FBXLoader().load("../models/jariBuilding/1F.fbx",function (object) {
+            object.position.set(0,-25,0);
+            object.name='1F';
+            scene.add(object);
+            Floor.add(object);
+        },onprogress,onerror);
+
+        initContent1();
+
+        scene.add(Floor);
+
+        loadCube(new THREE.Vector3(0,0,0));
+        loadCube(new THREE.Vector3(100,0,0));
+        loadCube(new THREE.Vector3(0,0,200));
+    }
+
+    function initContent1(){
+        loadFbx('../models/jariBuilding/4F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(65,40,100),'2F');
+        loadFbx('../models/jariBuilding/4F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(65,85,100),'3F');
+        loadFbx('../models/jariBuilding/4F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(65,130,100),'4F');
+        loadFbx('../models/jariBuilding/4F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(65,175,100),'5F');
+        loadFbx('../models/jariBuilding/4F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(65,220,100),'6F');
+        loadFbx('../models/jariBuilding/5F.fbx',new THREE.Vector3(0.79,1.2,0.75),new THREE.Vector3(25,265,100),'7F');
+    }
+
+    function loadFbx(url,scale,pos,name){
+        new FBXLoader().load(url,function (object) {
+            object.scale.set(scale.x,scale.y,scale.z);
+            object.position.set(pos.x,pos.y,pos.z);
+            object.name=name;
+            scene.add(object);
+            Floor.add(object);
+            floorPos.push(object.position.y);
+        },onprogress,onerror);
+    }
+
+    function loadCube(vector3) {
+        let cubeGeo=new THREE.BoxGeometry();
+        let cubeMat=new THREE.MeshPhongMaterial({color:0xff0000});
+        let cube=new THREE.Mesh(cubeGeo,cubeMat);
+        cube.position.set(vector3.x,vector3.y,vector3.z);
+        scene.add(cube);
+    }
+
+    //调用所有初始化方法
+    function init() {
+        initScene();
+        initCamera();
+        initRenderer();
+        initLight();
+        initGround();
+        initControls();
+        initContent();
+        console.log(Floor);
+        console.log(floorPos);
+
+        document.addEventListener('resize',onWindowResize,false);
+        // window.addEventListener('onclick',onBtnClick,false);
+        // window.addEventListener('mousemove',onMouseMove,false);
+    }
+
+    let floorCount;
+    document.getElementById("spread").onclick=function spread() {
+        // alert('楼层展开！');
+        for(let i=0;floorCount=Floor.children.length-1,i<floorCount;i++){
+            // Floor.children[i].position.y+=(20*i+10);
+            new TWEEN.Tween(Floor.children[i].position).to({
+                x:Floor.children[i].position.x,y:Floor.children[i].position.y+20*i+10,z:Floor.children[i].position.z
+            }, 1000).onComplete(function(){
+                // console.log("tween completed!");
+            }).start();
+        }
+    }
+
+    document.getElementById("merge").onclick=function merge() {
+        for(let i=0;floorCount=Floor.children.length-1,i<floorCount;i++){
+            // Floor.children[i].position.y=floorPos[i];
+            new TWEEN.Tween(Floor.children[i].position).to({
+                x:Floor.children[i].position.x,y:floorPos[i],z:Floor.children[i].position.z
+            }, 1000).onComplete(function(){
+                // console.log("tween completed!");
+            }).start();
+        }
+    }
+
+
+
+
+
+    // 窗口变动触发的方法
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    //此处声明所有需要更新的组件
+    function update() {
+        controls.update();
+        stats.update();
+        TWEEN.update();
+    }
+    //此处声明需要渲染的方法以及对象
+    function render() {
+        renderer.render(scene,camera);
+    }
+    //此处递归调用，每帧都在执行
+    function animate() {
+        requestAnimationFrame(animate);
+        update();
+        render();
+    }
+    init();
+    animate();
+
+</script>
+
+</body>
+</html>
